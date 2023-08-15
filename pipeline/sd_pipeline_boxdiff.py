@@ -13,6 +13,10 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline
 from utils.gaussian_smoothing import GaussianSmoothing
 from utils.ptp_utils import AttentionStore, aggregate_attention
 
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import os
+
 logger = logging.get_logger(__name__)
 
 class BoxDiffPipeline(StableDiffusionPipeline):
@@ -262,6 +266,7 @@ class BoxDiffPipeline(StableDiffusionPipeline):
                                                    normalize_eot: bool = False,
                                                    bbox: List[int] = None,
                                                    config=None,
+                                                   step=None
                                                    ):
         """ Aggregates the attention for each token and computes the max activation value for each token to alter. """
         attention_maps = aggregate_attention(
@@ -270,6 +275,22 @@ class BoxDiffPipeline(StableDiffusionPipeline):
             from_where=("up", "down", "mid"),
             is_cross=True,
             select=0)
+
+        # visualize attention maps
+        if step in list(range(50)):
+            attention_for_text = attention_maps[:, :, 1:-1]
+            attention_for_text *= 100
+            attention_for_text = torch.nn.functional.softmax(attention_for_text, dim=-1)
+            indices_to_alter = [index - 1 for index in indices_to_alter]
+            for i in indices_to_alter:
+                image = attention_for_text[:, :, i].cpu().detach()               
+                
+                save_path = 'outputs/attention_map/'
+                os.makedirs(save_path, exist_ok=True)
+
+                plt.imshow(image, cmap=cm.get_cmap('hot'), interpolation="none")
+                plt.savefig(os.path.join(save_path, 'token{}_step{}.png'.format(i, step)))
+
         max_attention_per_index_fg, max_attention_per_index_bg, dist_x, dist_y = self._compute_max_attention_per_index(
             attention_maps=attention_maps,
             indices_to_alter=indices_to_alter,
@@ -579,6 +600,7 @@ class BoxDiffPipeline(StableDiffusionPipeline):
                         normalize_eot=sd_2_1,
                         bbox=bbox,
                         config=config,
+                        step=i
                     )
 
                     if not run_standard_sd:
